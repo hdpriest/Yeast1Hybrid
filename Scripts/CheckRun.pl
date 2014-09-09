@@ -144,15 +144,41 @@ sub _addTestSets {
 sub checkConfig {
 	my $Config=shift;
 	warn "Checking Config.\n";
-	die "Data directory undefined in config file!\n" unless(-e $Config->get('PATHS','DataDir'));
-	die "Promoter file undefined in config file!\n" unless(-e $Config->get('PATHS','Promoters'));
-	die "Output directory undefined in config file!\n" unless(-e $Config->get('PATHS','Output'));
+	die "Data directory (DataDir) undefined in config file!\n" unless(-e $Config->get('PATHS','DataDir'));
+	die "Promoter file (Promoters) undefined in config file!\n" unless(-e $Config->get('PATHS','Promoters'));
+	die "Output directory (Output) undefined in config file!\n" unless(-e $Config->get('PATHS','Output'));
+	die "Temp directory (TempDir) undefined in config file!\n" unless(-e $Config->get('PATHS','TempDir'));
+	die "Word File (Words) undefined in config file!\n" unless(-e $Config->get('PATHS','Words'));
 	my @Layouts=$Config->getAll('LAYOUTS');
 	die "No layouts defined!\n" unless (scalar(@Layouts)>0);
+
+	my @reps=$Config->getAll('REPS');
+	warn "No reps found.\n" unless (scalar(@reps)>0);
+	foreach my $rep ($Config->getAll('REPS')){
+		my @files=split(/\,/,$Config->get("REPS",$rep));
+		foreach my $file (@files){
+			if($Config->get("CONTROLFILES",$rep)){
+			}elsif($Config->get("TESTFILES",$rep)){
+			}else{
+				die "could not find $file in control or test files.\n";
+			}
+		}
+	}
+
+	my @names=$Config->getAll('NAMES');
+	warn "No reps found.\n" unless (scalar(@names)>0);
+	foreach my $name ($Config->getAll('NAMES')){
+		if($Config->get("CONTROLFILES",$name)){
+		}elsif($Config->get("TESTFILES",$name)){
+		}else{
+			die "could not find $name in control or test files.\n";
+		}
+	}
+
 	foreach my $layout ($Config->getAll('LAYOUTS')){
 		my $file=$Config->get('LAYOUTS',$layout);
 		my $path=$Config->get('PATHS','DataDir')."/".$file;
-		die "Cannot find $path\n" unless -e $path;
+		die "Cannot find $path - layouts should be in the data directory\n" unless -e $path;
 	}
 	
 	my @Tests=$Config->getAll('TESTFILES');
@@ -172,10 +198,42 @@ sub checkConfig {
 		my $path=$Config->get('PATHS','DataDir')."/".$ctrl;
 		die "Cannot find $path\n" unless -e $path;
 	}
+
 	warn "Config checks out\n";
 	return 1;
 }
 
 
 
+
+
+[NAMES]
+00237_140827_151905_.txt = HML1
+00238_140827_151952_.txt = HML1
+00239_140827_154953_.txt = HML1 
+00240_140827_154904_.txt = HML2
+00241_140827_161908_.txt = HML2 
+00242_140827_161957_.txt = HML2 
+00243_140827_164959_.txt = HML1
+00244_140827_164911_.txt = HML1
+00245_140827_171912_.txt = HML1
+00246_140827_171957_.txt = HML2
+00247_140827_175004_.txt = HML2
+00248_140827_174916_.txt = HML2 
+
+[CONTROLFILES]
+00237_140827_151905_.txt = 1
+00238_140827_151952_.txt = 1
+00239_140827_154953_.txt = 1 
+00240_140827_154904_.txt = 2
+00241_140827_161908_.txt = 2 
+00242_140827_161957_.txt = 2 
+
+[TESTFILES]
+00243_140827_164959_.txt = 1
+00244_140827_164911_.txt = 1
+00245_140827_171912_.txt = 1
+00246_140827_171957_.txt = 2
+00247_140827_175004_.txt = 2
+00248_140827_174916_.txt = 2 
 
