@@ -13,29 +13,60 @@ use Tools;
 sub new {
         my $class=shift;
         my $self = {
-	  	ControlData => [],
-		TestData	=> [],
+		DataBySets  => {},
+		Plates	=> {},
 		output	=> [],
-		ctrlIT	=> 0,
-		testIT	=> 0,
+		iter		=> undef
         };
         bless $self, $class;
         return $self;
 }
 
+sub initializeSet {
+	my $self=shift;
+	my $set=shift;
+	$self->{DataBySets}{$set}=[];
+	return 1;
+}
+
+sub addPlate {
+	my $self=shift;
+	my $Plate 	=shift;
+	my $set	=shift;
+	my $id = $Plate->getID();
+	die "Can't add $id to $set - not initilized.\n" unless defined $self->{DataBySets}{$set};
+	$self->{Plates}{$id}=$Plate;
+	push @{$self->{DataBySets}{$set}}, $Plate;
+	return 1;
+}
+
 sub analyze {
 }
 
-sub getSetByID {
+sub _initIterator {
+	my $self=shift;
+	my @IDs = keys %{$self->{Plates}};
+	$self->{IDs} = \@IDs;
+	$self->{iter}= 0;
+	return $self;
+}
+
+sub getNextPlate {
+	my $self=shift;
+	$self = _initIterator($self) unless defined $self->{iter};
+	return undef if $self->{iter} >= scalar(keys %{$self->{Plates}});
+	my $id = $self->{IDs}[$self->{iter}];
+	my $Plate = $self->{Plates}{$id};
+	$self->{iter}++;
+	return $Plate;
+}
+
+sub getPlateByID {
 	my $self=shift;
 	my $id=shift;
-	foreach my $Set (@{$self->{TestData}}){
-		my $n=$Set->getID();
-		return $Set if $n eq $id;
-	}
-	foreach my $Set (@{$self->{ControlData}}){
-		my $n=$Set->getID();
-		return $Set if $n eq $id;
+	if(defined($self->{Plates}{$id})){
+		return $self->{Plates}{$id};
+	}else{
 	}
 	return undef;
 }
@@ -43,12 +74,9 @@ sub getSetByID {
 sub getAllSources {
 	my $self=shift;
 	my %Sources;
-	foreach my $Set (@{$self->{TestData}}){
-		my @OrderedSources=@{$Set->getSourceListInOrder()};
-		map {$Sources{$_}=1} @OrderedSources;
-	}
-	foreach my $Set (@{$self->{ControlData}}){
-		my @OrderedSources=@{$Set->getSourceListInOrder()};
+	foreach my $id (keys %{$self->{Plates}}){
+		my $Plate = $self->{Plates}{$id};
+		my @OrderedSources=@{$Plate->getSourceListInOrder()};
 		map {$Sources{$_}=1} @OrderedSources;
 	}
 	my @Sources=keys %Sources;
@@ -67,59 +95,24 @@ sub getAllDataByWell {
 	$D{"T"}{"OD"}=[];
 	$D{"T"}{"Lum"}=[];
 	$D{"T"}{"IDS"}=[];
-	foreach my $ctrl (@{$self->{ControlData}}){
-		my %Data=%{$ctrl->getDataByWell($well)};
-		my $s=scalar(@{$Data{"OD"}});
-		push @{$D{"C"}{"OD"}}, @{$Data{"OD"}};
-		push @{$D{"C"}{"Lum"}}, @{$Data{"Lum"}};
-		for(my$i=0;$i<$s;$i++){
-			push @{$D{"C"}{"IDS"}}, $ctrl->getID();
-		}
-	}
-	foreach my $test (@{$self->{TestData}}){
-		my %Data=%{$test->getDataByWell($well)};
-		my $s=scalar(@{$Data{"OD"}});
-		push @{$D{"T"}{"OD"}}, @{$Data{"OD"}};
-		push @{$D{"T"}{"Lum"}}, @{$Data{"Lum"}};
-		for(my$i=0;$i<$s;$i++){
-			push @{$D{"T"}{"IDS"}}, $test->getID();
+	foreach my $set (keys %{$self->{DataBySets}}){
+		foreach my $Plate (@{$self->{DataBySets}{$set}}){
+			my %Data=%{$Plate->getDataByWell($well)};
+			my $s=scalar(@{$Data{"OD"}});
+			push @{$D{"C"}{"OD"}}, @{$Data{"OD"}};
+			push @{$D{"C"}{"Lum"}}, @{$Data{"Lum"}};
+			for(my$i=0;$i<$s;$i++){
+				push @{$D{"C"}{"IDS"}}, $Plate->getID();
+			}
 		}
 	}
 	return \%D;
 }
 
-sub getOrderedSourcesTest {
-	my $self=shift;
-	my $Set=${$self->{TestData}}[0];
-	my @OrderedSources=@{$Set->getSourceListInOrder()};
-	return \@OrderedSources;
-}
-
-sub getMeanActivityForTestBySource {
-	my $self=shift;
-	my $source=shift;
-	my @means;
-	foreach my $Set (@{$self->{TestData}}){
-		my $meanActivity=$Set->getNormalizedActivityBySource($source);
-		push @means, $meanActivity;
-	}
-	return hdpTools->mean(@means);
-}
-
-sub getMeanActivityForControlBySource {
-	my $self=shift;
-	my $source=shift;
-	my @means;
-	foreach my $Set (@{$self->{ControlData}}){
-		my $meanActivity=$Set->getNormalizedActivityBySource($source);
-		push @means, $meanActivity;
-	}
-	return hdpTools->mean(@means);
-}
-
 sub normalizeRunsByOD {
 	my $self=shift;
 	my $cutoff=shift;
+	die "Method not converted\n";
 	foreach my $Set (@{$self->{ControlData}}){
 		my @sources=@{$Set->getSourceList()};
 		foreach my $source (@sources){
@@ -139,6 +132,7 @@ sub getAllNormDataBySource	{
 	my $self=shift;
 	my $source=shift;
 	my %D;
+	die "method not converted\n";
 	$D{"C"}={};
 	$D{"T"}={};
 	$D{"C"}{"norm"}=[];
@@ -166,31 +160,11 @@ sub getAllNormDataBySource	{
 	return \%D;
 }
 
-sub getControlDataBySource {
-	my $self=shift;
-	my $source=shift;
-	my %D;
-	$D{"C"}={};
-	$D{"C"}{"OD"}=[];
-	$D{"C"}{"Lum"}=[];
-	$D{"C"}{"IDS"}=[];
-	foreach my $ctrl (@{$self->{ControlData}}){
-		next unless $ctrl->checkForSource($source);
-		my %Data=%{$ctrl->getDataBySource($source)};
-		my $s=scalar(@{$Data{"OD"}});
-		push @{$D{"C"}{"OD"}}, @{$Data{"OD"}};
-		push @{$D{"C"}{"Lum"}}, @{$Data{"Lum"}};
-		for(my$i=0;$i<$s;$i++){
-			push @{$D{"C"}{"IDS"}}, $ctrl->getID();
-		}
-	}
-	return \%D;
-}
-
 sub getAllDataBySource	{
 	my $self=shift;
 	my $source=shift;
 	my %D;
+	die "Method not converted\n";
 	$D{"C"}={};
 	$D{"T"}={};
 	$D{"C"}{"OD"}=[];
@@ -222,26 +196,6 @@ sub getAllDataBySource	{
 	return \%D;
 }
 
-sub getTestForSource {
-	my $self=shift;
-	my $source=shift;
-	my %D;
-	$D{"OD"}=[];
-	$D{"Lum"}=[];
-	$D{"ID"}=[];
-	foreach my $ctrl (@{$self->{TestData}}){
-		my $ID=$ctrl->getID();
-		my %Data=%{$ctrl->getDataBySource($source)};
-		my $s=scalar(@{$Data{"OD"}});
-		push @{$D{"OD"}}, @{$Data{"OD"}};
-		push @{$D{"Lum"}}, @{$Data{"Lum"}};
-		for(my$i=0;$i<$s;$i++){
-			push @{$D{"ID"}}, $ctrl->getID();
-		}
-	}
-	return \%D;
-}
-
 sub getControlForSource {
 	my $self=shift;
 	my $source=shift;
@@ -262,45 +216,6 @@ sub getControlForSource {
 	return \%D;
 }
 
-sub getAControlSet {
-	my $self=shift;
-	return $self->{ControlData}[0];
-}
-
-sub getNextCtrlSet {
-	my $self=shift;
-	my $i=$self->{ctrlIT};
-	if(defined($self->{ControlData}[$i])){
-		$self->{ctrlIT}++;
-		return $self->{ControlData}[$i];
-	}else{
-		return undef;
-	}
-}
-
-sub getNextTestSet {
-	my $self=shift;
-	my $i=$self->{testIT};
-	if(defined($self->{TestData}[$i])){
-		$self->{testIT}++;
-		return $self->{TestData}[$i];
-	}else{
-		return undef;
-	}
-	die "Got here somehow.\n";
-}
-
-sub addTestSet {
-	my $self	=shift;
-	my $datafile=shift;
-	my $layout	=shift;
-	my $id	=shift;
-	warn "Adding Test Set $datafile with $layout\n\n";
-	my $set=y1hData->new($layout,$datafile,$id);
-	push @{$self->{TestData}}, $set;
-	return 1;
-}
-
 sub getStatus {
 	my $self=shift;
 	warn scalar(@{$self->{ControlData}})." datasets as controls\n";
@@ -308,14 +223,72 @@ sub getStatus {
 	return 1;
 }
 
-sub addControlSet {
-	my $self	=shift;
-	my $datafile=shift;
-	my $layout	=shift;
-	my $id	=shift;
-	warn "Adding Control Set $datafile with $layout\n\n";
-	my $set=y1hData->new($layout,$datafile,$id);
-	push @{$self->{ControlData}}, $set;
+
+sub parseExperiment {
+	my $self=shift;
+	my $config=shift;
+	my @codes = @{$_[0]};
+	my %E;
+	my $iDir = $config->get("PATHS","DataDir");
+	foreach my $line (@codes){
+		my ($code,$info)=split(/\s+/,$line);
+		my $nCode = sprintf("%05d",$code);
+		my %Plate;
+		if($info=~m/diploid$/){
+			my ($date,$layout,$set,$TF,$rep,$indiv,$celltype)=split(/\_/,$info);
+			$layout=~s/layout//;
+			$rep=~s/rep//;
+			$Plate{"D"}=$date;
+			$Plate{"L"}=$layout;
+			$Plate{"S"}=$set;
+			$Plate{"T"}=$TF;
+			$Plate{"R"}=$rep;
+
+			$E{dip}{$nCode}=\%Plate;
+			$self->initializeSet($set);
+		}elsif($info=~m/haploid$/){
+			my ($date,$layout,$set,$TF,$rep,$indiv,$celltype)=split(/\_/,$info);
+			$layout=~s/layout//;
+			$Plate{"D"}=$date;
+			$Plate{"L"}=$layout;
+			$Plate{"S"}=$set;
+			$Plate{"T"}=$TF;
+			$Plate{"R"}=$rep;
+			$E{hap}{$nCode}=\%Plate;
+			$self->initializeSet($set);
+		}else{
+			warn "Malformed barcode line!\n$line\n";
+		}
+	}
+	opendir(DIR,$iDir) || die "Cannot open directory: $iDir!\n$!\nexiting...\n";
+	my @files=grep {m/txt$/} readdir(DIR);
+	closedir DIR;
+	foreach my $file (@files) {
+		my @F=split(/\_/,$file);
+		my $path=$iDir."/".$file;
+		if(defined($E{dip}{$F[2]})){
+			warn "$file is a diploid test file\n";
+			my %P = %{$E{dip}{$F[2]}};
+			my $L = $iDir."/".$config->get("LAYOUTS",$P{L});
+			my $ID = $P{S}."-".$P{T}."-".$P{R}."-".$P{L}."-".$F[2];
+			my $D = $path;
+		#	warn $F[2]."\n".$L."\n".$ID."\n".$D."\n";
+			my $Plate = y1hPlate->new($L,$D,$ID);
+			$self->addPlate($Plate,$P{S});
+		}elsif(defined($E{hap}{$F[2]})){
+			warn "$file is a haploid QC file\n";
+			my %P = %{$E{hap}{$F[2]}};
+			next if $P{S} eq "TF";
+			my $L = $iDir."/".$config->get("LAYOUTS",$P{L});
+			my $ID = $P{S}."-".$P{T}."-".$P{R}."-".$P{L}."-".$F[2];
+			my $D = $path;
+			#warn $F[2]."\n".$L."\n".$ID."\n".$D."\n";
+			my $Plate = y1hPlate->new($L,$D,$ID);
+			$self->addPlate($Plate,$P{S});
+		}else{
+			warn "Not Handled: $file\n";
+		}
+	}
 	return 1;
 }
 
