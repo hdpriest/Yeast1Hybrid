@@ -39,7 +39,15 @@ sub addPlate {
 	push @{$self->{DataBySets}{$set}}, $Plate;
 	return 1;
 }
-
+sub getPlatesBySet {
+	my $self	=shift;
+	my $set 	=shift;
+	if(defined($self->{DataBySets}{$set})){
+		return $self->{DataBySets}{$set};
+	}else{
+		return undef;
+	}
+}
 sub analyze {
 }
 
@@ -231,6 +239,7 @@ sub parseExperiment {
 	my %E;
 	my $iDir = $config->get("PATHS","DataDir");
 	foreach my $line (@codes){
+		next if $line =~ m/^\#/;
 		my ($code,$info)=split(/\s+/,$line);
 		my $nCode = sprintf("%05d",$code);
 		my %Plate;
@@ -267,8 +276,8 @@ sub parseExperiment {
 		my @F=split(/\_/,$file);
 		my $path=$iDir."/".$file;
 		if(defined($E{dip}{$F[2]})){
-			warn "$file is a diploid test file\n";
 			my %P = %{$E{dip}{$F[2]}};
+			warn "$file is a diploid test file of set $P{S}\n";
 			my $L = $iDir."/".$config->get("LAYOUTS",$P{L});
 			my $ID = $P{S}."-".$P{T}."-".$P{R}."-".$P{L}."-".$F[2];
 			my $D = $path;

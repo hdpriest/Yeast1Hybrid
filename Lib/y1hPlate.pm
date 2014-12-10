@@ -154,6 +154,26 @@ sub getNormalizedActivityBySource {
 	return undef;
 }
 
+sub getLumBySource {
+	my $self=shift;
+	my $source=shift;
+	if(defined($self->{RawData}{$source})){
+		return $self->{RawData}{$source}{Lum};
+	}else{
+		return undef;
+	}
+}
+
+sub getODBySource {
+	my $self=shift;
+	my $source=shift;
+	if(defined($self->{RawData}{$source})){
+		return $self->{RawData}{$source}{OD};
+	}else{
+		return undef;
+	}
+}
+
 sub getDataBySource {
 	my $self=shift;
 	my $source=shift;
