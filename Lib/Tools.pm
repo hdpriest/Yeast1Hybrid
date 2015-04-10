@@ -56,6 +56,17 @@ sub log2 {
 		return log($value)/log(2);
 	}
 }
+sub getZCutoff {
+	my $self=shift;
+	my $mean=shift;
+	my $stdev=shift;
+	my $Zup=2.33;
+	my $Zdn=-2.33;
+	my $score_up = abs(($Zup * $stdev)+$mean);
+	my $score_dn = abs(($Zdn * $stdev)+$mean);
+	my @scores = sort {$a <=> $b} ($score_up,$score_dn);
+	return $scores[$#scores];
+}
 
 sub averageNormalizeArray { 
 	my $self=shift;

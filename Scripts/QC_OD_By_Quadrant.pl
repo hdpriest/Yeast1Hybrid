@@ -40,30 +40,13 @@ while(my $Plate=$Run->getNextPlate()){
 		my $quadFile   = _genR_frame_ValuesByQuadrant($Plate,$p);
 		_RFrameToPNG($columnFile,"Column",$p);
 		_RFrameToPNG($rowFile,"Row",$p);	
-		_RFrameToPNG($quadFile,"Quadrant",$p);	
 	}
 }
 
 exit(0);
 
 sub _genR_frame_ValuesByQuadrant {
-	my $Plate=shift;	
-	my $Value=shift;
-	my $id=$Plate->getID();
-	$id=~s/\.txt//;
-	my @output;
-	my %data=%{$Plate->getDataByQuadrant($Value)};
-	push @output, "Quadrant,$Value";
-	foreach my $key (keys %data){
-		my @values = @{$data{$key}};
-		foreach my $value (@values){
-			my $line="$key,$value";
-			push @output, $line;
-		}
-	}
-	my $temp=$oDir."/".$id.".$Value.ByQuadrant.csv";
-	Tools->printToFile($temp,\@output);
-	return $temp;
+	die "Unimplemented subroutine\n";
 }
 
 sub _RFrameToPNG {

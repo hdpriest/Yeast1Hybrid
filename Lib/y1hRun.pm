@@ -48,6 +48,22 @@ sub getPlatesBySet {
 		return undef;
 	}
 }
+
+sub normalizePlatesBySet {
+	my $self=shift;
+	my $set =shift;
+	my $low =shift;
+	my $high=shift;
+	if(defined($self->{DataBySets}{$set})){
+		foreach my $plate (@{$self->{DataBySets}{$set}}){
+			$plate->normalizeDataByOD($low,$high);
+		}
+	}else{
+		die "unknown dataset $set\n";
+	}
+	return 1;
+}
+
 sub analyze {
 }
 
@@ -57,6 +73,15 @@ sub _initIterator {
 	$self->{IDs} = \@IDs;
 	$self->{iter}= 0;
 	return $self;
+}
+
+sub getAllPlates {
+	my $self=shift;
+	my @Plates;
+	foreach my $key (keys %{$self->{Plates}}){
+		push @Plates, $self->{Plates}{$key};
+	}
+	return \@Plates;
 }
 
 sub getNextPlate {
@@ -243,6 +268,7 @@ sub parseExperiment {
 		my ($code,$info)=split(/\s+/,$line);
 		my $nCode = sprintf("%05d",$code);
 		my %Plate;
+		next if $info=~m/promoter/;
 		if($info=~m/diploid$/){
 			my ($date,$layout,$set,$TF,$rep,$indiv,$celltype)=split(/\_/,$info);
 			$layout=~s/layout//;
@@ -274,24 +300,23 @@ sub parseExperiment {
 	closedir DIR;
 	foreach my $file (@files) {
 		my @F=split(/\_/,$file);
+		next unless scalar(@F) > 4;
 		my $path=$iDir."/".$file;
 		if(defined($E{dip}{$F[2]})){
 			my %P = %{$E{dip}{$F[2]}};
 			warn "$file is a diploid test file of set $P{S}\n";
-			my $L = $iDir."/".$config->get("LAYOUTS",$P{L});
+			my $L = $config->get("LAYOUTS",$P{L});
 			my $ID = $P{S}."-".$P{T}."-".$P{R}."-".$P{L}."-".$F[2];
 			my $D = $path;
-		#	warn $F[2]."\n".$L."\n".$ID."\n".$D."\n";
 			my $Plate = y1hPlate->new($L,$D,$ID);
 			$self->addPlate($Plate,$P{S});
 		}elsif(defined($E{hap}{$F[2]})){
 			warn "$file is a haploid QC file\n";
 			my %P = %{$E{hap}{$F[2]}};
-			next if $P{S} eq "TF";
-			my $L = $iDir."/".$config->get("LAYOUTS",$P{L});
+			next if $P{S} =~m/TF/;
+			my $L = $config->get("LAYOUTS",$P{L});
 			my $ID = $P{S}."-".$P{T}."-".$P{R}."-".$P{L}."-".$F[2];
 			my $D = $path;
-			#warn $F[2]."\n".$L."\n".$ID."\n".$D."\n";
 			my $Plate = y1hPlate->new($L,$D,$ID);
 			$self->addPlate($Plate,$P{S});
 		}else{

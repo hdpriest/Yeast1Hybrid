@@ -12,10 +12,14 @@ use Statistics::Multtest qw(:all);
 use Statistics::Test::WilcoxonRankSum;
 use Statistics::R;
 
-die "usage: perl $0 <config>\n\n" unless $#ARGV==0;
+die "usage: perl $0 <config> <csv of control OD range> <csv of test OD range>\n\n" unless $#ARGV==2;
 die "Cannot find config!\n" unless -e $ARGV[0];
 
+
 my $Config = Configuration->new($ARGV[0]);
+our @ctr_od_range = split(/\,/,$ARGV[1]);
+our @exp_od_range = split(/\,/,$ARGV[2]);
+
 my $oDir=$Config->get('PATHS','Output');
 my $iDir=$Config->get('PATHS','DataDir');
 my $wordFile=$Config->get('PATHS','Words');
@@ -31,57 +35,136 @@ my $R=Statistics::R->new();
 $R->startR();
 $R->send("library(ggplot2)");
 warn "Done.\n";
-
-while(my $Plate=$Run->getNextPlate()){
-	my @P=("Lum");
-	foreach my $p (@P){
-		my $columnFile = _genR_frame_ValuesByColumn($Plate,$p);
-		my $rowFile	   = _genR_frame_ValuesByRow($Plate,$p);
-		my $quadFile   = _genR_frame_ValuesByQuadrant($Plate,$p);
-		_RFrameToPNG($columnFile,"Column",$p);
-		_RFrameToPNG($rowFile,"Row",$p);	
-		_RFrameToPNG($quadFile,"Quadrant",$p);	
+my @Plates = @{$Run->getAllPlates()};
+my %comparisons;
+for(my $i=0;$i<=$#Plates;$i++){
+	for(my $j=0;$j<=$#Plates;$j++){
+		next if $j==$i;
+		my $quadFile   = _genR_frame_LumByRank($Plates[$i],$Plates[$j],"Rank");
+		next 	unless defined $quadFile;
+		my @key=($Plates[$i]->getID(),$Plates[$j]->getID());
+		@key = sort {$a cmp $b} @key;
+		my $key=join("-",@key);
+		next if defined $comparisons{$key};
+		$comparisons{$key}=1;
+		_RFrameToPNG($quadFile,$Plates[$i]->getID(),$Plates[$j]->getID());	
 	}
 }
 
 exit(0);
 
-sub _genR_frame_ValuesByQuadrant {
-	my $Plate=shift;	
+sub _precheck {
+	my $pi = shift;
+	my $pj = shift;
+	my %sources;
+	map {$sources{$_}=1} @{$pi->getSourceList()};
+	map {$sources{$_}=1} @{$pj->getSourceList()};
+	my $hit=undef;
+	foreach my $s (keys %sources){
+		next unless (($pi->checkForSource($s)) && ($pj->checkForSource($s)));
+		$hit=1;
+	}
+	return $hit;
+}
+
+sub _genR_frame_LumByRank {
+	my $Plate_i=shift;	
+	my $Plate_j=shift;	
+	return undef unless _precheck($Plate_i,$Plate_j);
 	my $Value=shift;
-	my $id=$Plate->getID();
-	$id=~s/\.txt//;
 	my @output;
-	my %data=%{$Plate->getDataByQuadrant($Value)};
-	push @output, "Quadrant,$Value";
-	foreach my $key (keys %data){
-		my @values = @{$data{$key}};
-		foreach my $value (@values){
-			my $line="$key,$value";
-			push @output, $line;
+	push @output, "Source,X,Y";
+	my $id_i = $Plate_i->getID();
+	my $id_j = $Plate_j->getID();
+	warn "$id_i vs $id_j\n";
+	$id_i=~s/\.txt//;
+	$id_j=~s/\.txt//;
+	my %Lum_i = %{_getRanksByPlate($Plate_i)};
+	my %Lum_j = %{_getRanksByPlate($Plate_j)};
+	my @R_i = sort {$a <=> $b} keys %Lum_i;
+	my @R_j = sort {$a <=> $b} keys %Lum_j;
+	my %S;
+	my $rank=0;
+	for(my $i=0;$i<=$#R_i;$i++){
+#		print $I."\t".join(",",@{$Lum_i{$R_i[$i]}})."\t".$R_i[$i]."\n";
+		my @sources = @{$Lum_i{$R_i[$i]}};
+		foreach my $source (@sources){
+			$rank+=1;
+			if(defined($S{$source})){
+				die "$source encountered twice in plate $id_i\n";
+			}else{
+				$S{$source}={};
+				$S{$source}{pi}=$rank;
+			}
 		}
 	}
-	my $temp=$oDir."/".$id.".$Value.ByQuadrant.csv";
+	$rank=0;
+	for(my $j=0;$j<=$#R_j;$j++){
+		my @sources = @{$Lum_j{$R_j[$j]}};
+		foreach my $source (@sources){
+			$rank+=1;
+			if(defined($S{$source})){
+				$S{$source}{pj}=$rank;
+			}else{
+				warn "$source not predefined on second go through\n";
+			}
+
+		}
+	}
+	foreach my $source (keys %S){
+		my $line=$source.",".$S{$source}{pi}.",".$S{$source}{pj};
+		push @output, $line;
+	}
+	my $temp=$oDir."/".$id_i.".vs.".$id_j.".byRank.csv";
 	Tools->printToFile($temp,\@output);
 	return $temp;
 }
 
+sub _getRanksByPlate {
+	my $Plate=shift;
+	my @sources = @{$Plate->getSourceList()};
+	my %R;
+	foreach my $s (@sources){
+		next unless $Plate->checkForSource($s);
+		if($Plate->getID() =~ m/control/){
+			$Plate->normalizeDataBySourceByOD($s,@ctr_od_range);
+		}else{
+			$Plate->normalizeDataBySourceByOD($s,@exp_od_range);
+		}
+		my @L = @{$Plate->getLumBySource($s)};
+		next if scalar(@L) ==0;
+		for(my$x=0;$x<=$#L;$x++){
+			my $L=$L[$x];
+			exit unless defined $L;
+#		foreach my $L(@L){
+			if(defined($R{$L})){
+				push @{$R{$L}}, $s;
+				#warn "pushing $s at $L, size now ".scalar(@{$R{$L}})."\n";
+			}else{
+				$R{$L}=[];
+				push @{$R{$L}}, $s;
+			}
+		}
+	}
+	return \%R;
+}
+
 sub _RFrameToPNG {
 	my $file =shift;
-	my $group=shift;
-	my $plot =shift;
+	my $xlab = shift;
+	my $ylab = shift;
 	my $out=$file;
 	$out=~s/csv$//;
 	my $title=$out;
 	$title=~s/.+\///;
 #	$title=~s/ByColumn//;
 #	$title=~s/ByRow//;
-	$out.=$plot.".png";
+	$out.=".png";
 	my $cmd="DF=as.data.frame(read.table(\"$file\",sep=\",\",header=TRUE))";
 	$R->send($cmd);
 	$cmd="png(file=\"$out\")";
 	$R->send($cmd);
-	$cmd="ggplot(data=DF,aes(x=$group,y=$plot,group=$group)) + geom_boxplot() + theme(axis.text.x = element_text(angle=90,hjust=1)) + ggtitle(\"$title\")";
+	$cmd="ggplot(data=DF,aes(x=X,y=Y,group=Source)) + geom_point() + theme(axis.text.x = element_text(angle=90,hjust=1)) + ggtitle(\"$title\") + xlab(\"$xlab\") + ylab(\"$ylab\")";
 	$R->send($cmd);
 	$cmd="dev.off()";
 	$R->send($cmd);
@@ -141,7 +224,8 @@ sub checkConfig {
 	die "No layouts defined!\n" unless (scalar(@Layouts)>0);
 	foreach my $layout ($Config->getAll('LAYOUTS')){
 		my $file=$Config->get('LAYOUTS',$layout);
-		my $path=$Config->get('PATHS','DataDir')."/".$file;
+#		my $path=$Config->get('PATHS','DataDir')."/".$file;
+		my $path=$file;
 		die "Cannot find $path\n" unless -e $path;
 	}
 	

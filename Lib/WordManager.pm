@@ -45,8 +45,8 @@ sub getNextWord {
 
 sub _loadFile {
 	my $self=shift;
-	my @Words=@{hdpTools->LoadFile($self->{File})};
-	my %Promoters=%{hdpTools->LoadFasta($self->{Promoters})};
+	my @Words=@{Tools->LoadFile($self->{File})};
+	my %Promoters=%{Tools->LoadFasta($self->{Promoters})};
 	my $temp=$self->{Temp};
 	foreach my $word (@Words){
 		$q->enqueue($word);
@@ -62,7 +62,7 @@ sub _loadFile {
 	my %words;
 	for(my$i=0;$i<=$self->{maxThreads};$i++){
 		my $file=$temp."/Temp.$i.txt";
-		my @file=@{hdpTools->LoadFile($file)};
+		my @file=@{Tools->LoadFile($file)};
 		foreach my $line (@file){
 			my ($w,$ps)=split("\t",$line);
 			my $obj=Word->new($w);
@@ -92,7 +92,7 @@ sub _findHits {
 	my $output=$tempDir."/Temp.$TID.txt";
 	my @output;
 	while(my $w=$q->dequeue_nb()){
-		my $rc=hdpTools->revcomp($w);
+		my $rc=Tools->revcomp($w);
 		my @hits;
 		foreach my $key (keys %Promoters){
 			if($Promoters{$key}=~m/$w/){
@@ -103,7 +103,7 @@ sub _findHits {
 		}
 		push @output, $w."\t".join(",",@hits);
 	}
-	hdpTools->printToFile($output,\@output);
+	Tools->printToFile($output,\@output);
 }
 
 1;

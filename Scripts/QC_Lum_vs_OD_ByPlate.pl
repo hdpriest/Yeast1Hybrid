@@ -16,6 +16,7 @@ die "usage: perl $0 <config>\n\n" unless $#ARGV==0;
 die "Cannot find config!\n" unless -e $ARGV[0];
 
 my $Config = Configuration->new($ARGV[0]);
+my $EXID=$Config->get('OPTIONS',"ID");
 my $oDir=$Config->get('PATHS','Output');
 my $iDir=$Config->get('PATHS','DataDir');
 my $wordFile=$Config->get('PATHS','Words');
@@ -32,45 +33,59 @@ $R->startR();
 $R->send("library(ggplot2)");
 warn "Done.\n";
 
-while(my $Plate=$Run->getNextPlate()){
-	my @P=("Lum");
-	foreach my $p (@P){
-		my $columnFile = _genR_frame_ValuesByColumn($Plate,$p);
-		my $rowFile	   = _genR_frame_ValuesByRow($Plate,$p);
-		my $quadFile   = _genR_frame_ValuesByQuadrant($Plate,$p);
-		_RFrameToPNG($columnFile,"Column",$p);
-		_RFrameToPNG($rowFile,"Row",$p);	
-		_RFrameToPNG($quadFile,"Quadrant",$p);	
-	}
+my %s;
+
+my @Control=@{$Run->getPlatesBySet("control")};
+my @Experim=@{$Run->getPlatesBySet("experimental")};
+foreach my $plate (@Control){
+	my %cod = %{_getLumByOD([$plate])};
+	my $id = $plate->getID();
+	my $tfile = _genR_frame_PerSource(\%cod,$EXID,"control");
+	my $ofile= $id.".LumByOD.png";
+	_RFrameToPNG($tfile,"OD","Lum",$ofile);
 }
+foreach my $plate (@Experim){
+	my %eod = %{_getLumByOD([$plate])};
+	my $id = $plate->getID();
+	my $tfile = _genR_frame_PerSource(\%eod,$EXID,"experiment");
+	my $ofile= $id.".LumByOD.png";
+	_RFrameToPNG($tfile,"OD","Lum",$ofile);
+}
+
 
 exit(0);
 
-sub _genR_frame_ValuesByQuadrant {
-	my $Plate=shift;	
-	my $Value=shift;
-	my $id=$Plate->getID();
-	$id=~s/\.txt//;
-	my @output;
-	my %data=%{$Plate->getDataByQuadrant($Value)};
-	push @output, "Quadrant,$Value";
-	foreach my $key (keys %data){
-		my @values = @{$data{$key}};
-		foreach my $value (@values){
-			my $line="$key,$value";
-			push @output, $line;
+sub _getLumByOD {
+	my @Plates = @{$_[0]};
+	my %od;
+	foreach my $Plate (@Plates){
+		my $ID = $Plate->getID();
+		warn "Processing $ID\n";
+		my @SL = @{$Plate->getSourceListInOrder()};
+		my %Sources;
+		map {$Sources{$_}=1} @SL;
+		foreach my $s (keys %Sources){
+			my @OD = @{$Plate->getODBySource($s)};
+			my @Lum= @{$Plate->getLumBySource($s)};
+			for(my$i=0;$i<=$#OD;$i++){
+				my $od=sprintf("%.2f",$OD[$i]);
+				if(defined($od{$od})){
+					push @{$od{$od}}, $Lum[$i];
+				}else{
+					$od{$od}=[];
+					push @{$od{$od}}, $Lum[$i];
+				}
+			}
 		}
 	}
-	my $temp=$oDir."/".$id.".$Value.ByQuadrant.csv";
-	Tools->printToFile($temp,\@output);
-	return $temp;
+	return \%od;
 }
 
 sub _RFrameToPNG {
 	my $file =shift;
 	my $group=shift;
 	my $plot =shift;
-	my $out=$file;
+	my $out=shift;
 	$out=~s/csv$//;
 	my $title=$out;
 	$title=~s/.+\///;
@@ -78,56 +93,38 @@ sub _RFrameToPNG {
 #	$title=~s/ByRow//;
 	$out.=$plot.".png";
 	my $cmd="DF=as.data.frame(read.table(\"$file\",sep=\",\",header=TRUE))";
+	#warn "$cmd\n";
 	$R->send($cmd);
-	$cmd="png(file=\"$out\")";
+	$cmd="png(file=\"$out\",height=600,width=600,units=\"px\")";
+	#warn "$cmd\n";
 	$R->send($cmd);
-	$cmd="ggplot(data=DF,aes(x=$group,y=$plot,group=$group)) + geom_boxplot() + theme(axis.text.x = element_text(angle=90,hjust=1)) + ggtitle(\"$title\")";
+#	png(file="test.png",width=1200,height=1200,units="px")
+#	> ggplot(data=DF,aes(x=OD,y=Lum,group=OD)) + geom_boxplot()
+	$cmd="ggplot(data=DF,aes(x=$group,y=$plot,group=$group)) + geom_boxplot() + theme(axis.text.x = element_text(angle=90,hjust=1)) + ggtitle(\"$title\")+ xlim(0.5,1.1)";
+	#warn "$cmd\n";
 	$R->send($cmd);
 	$cmd="dev.off()";
 	$R->send($cmd);
 	return 1;
 }
 
-sub _genR_frame_ValuesByRow {
-	my $Plate=shift;	
-	my $Value=shift;
-	my $id=$Plate->getID();
-	$id=~s/\.txt//;
+sub _genR_frame_PerSource {
+	my %data = %{$_[0]};
+	my $id = $_[1];
+	my $type = $_[2];
 	my @output;
-	my @rows=("A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P");
-	push @output, "Row,$Value";
-	for(my$r=0;$r<=$#rows;$r++){
-		my $row=$rows[$r];
-		my @data=@{$Plate->getDataByRow($row,$Value)};
-		for(my $n=0;$n<=$#data;$n++){
-			my $line="$row,$data[$n]";
+	push @output, "OD,Lum";
+	foreach my $od (sort {$a <=> $b} keys %data){
+		my @lum = @{$data{$od}};
+		for(my$i=0;$i<=$#lum;$i++){
+			my $line = $od.",".$lum[$i];
 			push @output, $line;
 		}
 	}
-	my $temp=$oDir."/".$id.".$Value.ByRow.csv";
+	my $temp=$oDir."/".$id.".$type.LumByOD.csv";
 	Tools->printToFile($temp,\@output);
 	return $temp;
 }
-
-sub _genR_frame_ValuesByColumn {
-	my $Plate=shift;	
-	my $Value=shift;
-	my $id=$Plate->getID();
-	$id=~s/\.txt//;
-	my @output;
-	push @output, "Column,$Value";
-	for(my$i=1;$i<=24;$i++){
-		my @data=@{$Plate->getDataByColumn($i,$Value)};
-		for(my $n=0;$n<=$#data;$n++){
-			my $line="$i,$data[$n]";
-			push @output, $line;
-		}
-	}
-	my $temp=$oDir."/".$id.".$Value.ByColumn.csv";
-	Tools->printToFile($temp,\@output);
-	return $temp;
-}
-
 
 sub checkConfig {
 	my $Config=shift;

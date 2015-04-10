@@ -33,16 +33,39 @@ $R->send("library(ggplot2)");
 warn "Done.\n";
 
 while(my $Plate=$Run->getNextPlate()){
+	warn "QCing ".$Plate->getID()."\n";
 	my @P=("OD");
 	foreach my $p (@P){
 		my $columnFile = _genR_frame_ValuesByColumn($Plate,$p);
 		my $rowFile	   = _genR_frame_ValuesByRow($Plate,$p);
+		my $quadFile   = _genR_frame_ValuesByQuadrant($Plate,$p);
 		_RFrameToPNG($columnFile,"Column",$p);
 		_RFrameToPNG($rowFile,"Row",$p);	
+		_RFrameToPNG($quadFile,"Quadrant",$p);	
 	}
 }
 
 exit(0);
+
+sub _genR_frame_ValuesByQuadrant {
+	my $Plate=shift;	
+	my $Value=shift;
+	my $id=$Plate->getID();
+	$id=~s/\.txt//;
+	my @output;
+	my %data=%{$Plate->getDataByQuadrant($Value)};
+	push @output, "Quadrant,$Value";
+	foreach my $key (keys %data){
+		my @values = @{$data{$key}};
+		foreach my $value (@values){
+			my $line="$key,$value";
+			push @output, $line;
+		}
+	}
+	my $temp=$oDir."/".$id.".$Value.ByQuadrant.csv";
+	Tools->printToFile($temp,\@output);
+	return $temp;
+}
 
 sub _RFrameToPNG {
 	my $file =shift;
@@ -56,12 +79,16 @@ sub _RFrameToPNG {
 #	$title=~s/ByRow//;
 	$out.=$plot.".png";
 	my $cmd="DF=as.data.frame(read.table(\"$file\",sep=\",\",header=TRUE))";
+#warn $cmd."\n";	
 	$R->send($cmd);
 	$cmd="png(file=\"$out\")";
+#warn $cmd."\n";	
 	$R->send($cmd);
 	$cmd="ggplot(data=DF,aes(x=$group,y=$plot,group=$group)) + geom_boxplot() + theme(axis.text.x = element_text(angle=90,hjust=1)) + ggtitle(\"$title\")";
+#warn $cmd."\n";	
 	$R->send($cmd);
 	$cmd="dev.off()";
+#warn $cmd."\n";	
 	$R->send($cmd);
 	return 1;
 }
